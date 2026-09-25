@@ -78,9 +78,11 @@ def preprocess(dataset: str) -> str:
     df.drop_duplicates(inplace=True)
     print(f"[preprocess] Dropped {before - len(df)} duplicate rows.")
 
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     numeric_cols = df.columns.drop("label")
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+    # Must come after to_numeric: CIC files contain the text "Infinity", which
+    # to_numeric turns into a real inf.
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     df.fillna(0, inplace=True)
 
     sample_fraction = cfg.get("sample_fraction")
