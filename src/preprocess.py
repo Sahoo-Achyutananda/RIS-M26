@@ -1,0 +1,105 @@
+"""
+Phase 2 (paper's terminology): Data preprocessing.
+
+Loads a dataset's raw file(s), collapses the multi-class attack label into a
+binary Normal(0)/Attack(1) label, cleans column names, drops irrelevant columns,
+one-hot encodes categoricals, removes duplicates/NaNs/Infs, and writes a single
+clean CSV to data/processed/<dataset>/dataset_processed.csv.
+"""
+
+import os
+import re
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
+
+from config import get_config, DATA_PROCESSED
+
+
+def _clean_col(col: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]", "_", str(col).strip())
+
+
+def load_raw(cfg: dict) -> pd.DataFrame:
+    frames = []
+    encoding = cfg.get("encoding", "utf-8")
+    per_file_sample = cfg.get("per_file_sample_fraction")
+    label_col = cfg["label_column"]
+    for path in cfg["raw_files"]:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Raw file not found: {path}")
+        if cfg["has_header"]:
+            df = pd.read_csv(path, low_memory=False, encoding=encoding)
+        else:
+            df = pd.read_csv(path, header=None, names=cfg["column_names"], low_memory=False, encoding=encoding)
+
+        if per_file_sample and label_col in df.columns:
+            # Paper's approach: stratified 0.2% sample per raw file *before* merging,
+            # so huge multi-file datasets (e.g. CSE-CIC-IDS2018) stay memory-feasible.
+            df = df.groupby(label_col, group_keys=False).apply(
+                lambda g: g.sample(frac=per_file_sample, random_state=42) if len(g) > 0 else g
+            )
+            print(f"[preprocess] Stratified-sampled {os.path.basename(path)} to {df.shape}")
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True)
+
+
+def preprocess(dataset: str) -> str:
+    cfg = get_config(dataset)
+    print(f"[preprocess] Loading raw data for '{dataset}'...")
+    df = load_raw(cfg)
+    print(f"[preprocess] Raw shape: {df.shape}")
+
+    label_col = cfg["label_column"]
+    benign_values = {v.strip().lower() for v in cfg["benign_values"]}
+
+    df["label"] = df[label_col].astype(str).str.strip().str.lower().apply(
+        lambda v: 0 if v in benign_values else 1
+    )
+    if label_col != "label":
+        df.drop(columns=[label_col], inplace=True)
+
+    drop_cols = [c for c in cfg.get("drop_columns", []) if c in df.columns]
+    if drop_cols:
+        df.drop(columns=drop_cols, inplace=True)
+
+    df.columns = [_clean_col(c) for c in df.columns]
+
+    categorical_cols = [_clean_col(c) for c in cfg.get("categorical_columns", [])]
+    categorical_cols = [c for c in categorical_cols if c in df.columns]
+    for col in categorical_cols:
+        df[col] = LabelEncoder().fit_transform(df[col].astype(str))
+
+    before = len(df)
+    df.drop_duplicates(inplace=True)
+    print(f"[preprocess] Dropped {before - len(df)} duplicate rows.")
+
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    numeric_cols = df.columns.drop("label")
+    df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
+    df.fillna(0, inplace=True)
+
+    sample_fraction = cfg.get("sample_fraction")
+    if sample_fraction:
+        df = df.groupby("label", group_keys=False).apply(
+            lambda g: g.sample(frac=sample_fraction, random_state=42)
+        )
+        print(f"[preprocess] Stratified-sampled to {sample_fraction:.4%} -> shape {df.shape}")
+
+    out_dir = os.path.join(DATA_PROCESSED, dataset)
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "dataset_processed.csv")
+    df.to_csv(out_path, index=False)
+
+    print(f"[preprocess] Final shape: {df.shape}")
+    print(f"[preprocess] Label distribution:\n{df['label'].value_counts()}")
+    print(f"[preprocess] Saved to {out_path}")
+    return out_path
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", required=True)
+    args = parser.parse_args()
+    preprocess(args.dataset)
