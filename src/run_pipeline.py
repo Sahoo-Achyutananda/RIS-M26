@@ -34,7 +34,7 @@ from evaluate import compute_metrics, save_confusion_matrix, save_roc_curve
 from explain_shap import explain_model
 
 
-def run(dataset: str, skip_prep: bool = False):
+def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce"):
     cfg = get_config(dataset)
     out_dir = os.path.join(RESULTS_DIR, dataset)
     os.makedirs(out_dir, exist_ok=True)
@@ -66,9 +66,16 @@ def run(dataset: str, skip_prep: bool = False):
     y_test = y_test.to_numpy()
 
     results = []
-    models = get_baseline_models()
-    models["Averaging Hybrid (paper's method)"] = AveragingHybrid()
-    models["Stacked Hybrid (ours, novel)"] = StackedHybrid()
+    # reproduce: paper's baselines + averaging hybrid only.
+    # novel: paper's averaging hybrid (as the reference point) + our Stacked Hybrid.
+    if mode == "reproduce":
+        models = get_baseline_models()
+        models["Averaging Hybrid (paper's method)"] = AveragingHybrid()
+    else:
+        models = {
+            "Averaging Hybrid (paper's method)": AveragingHybrid(),
+            "Stacked Hybrid (ours, novel)": StackedHybrid(),
+        }
 
     xgb_for_shap = None
 
@@ -90,13 +97,13 @@ def run(dataset: str, skip_prep: bool = False):
         safe_name = name.replace(" ", "_").replace("(", "").replace(")", "").replace("'", "")
         save_confusion_matrix(
             y_test, y_pred,
-            os.path.join(out_dir, f"confusion_matrix_{safe_name}.png"),
+            os.path.join(out_dir, mode, f"confusion_matrix_{safe_name}.png"),
             f"Confusion Matrix - {name} ({cfg['display_name']})",
         )
         if y_score is not None:
             save_roc_curve(
                 y_test, y_score,
-                os.path.join(out_dir, f"roc_curve_{safe_name}.png"),
+                os.path.join(out_dir, mode, f"roc_curve_{safe_name}.png"),
                 f"ROC Curve - {name} ({cfg['display_name']})",
             )
 
@@ -104,7 +111,7 @@ def run(dataset: str, skip_prep: bool = False):
             xgb_for_shap = model
 
     results_df = pd.DataFrame(results).set_index("Model")
-    results_csv = os.path.join(out_dir, "metrics.csv")
+    results_csv = os.path.join(out_dir, f"metrics_{mode}.csv")
     results_df.to_csv(results_csv)
     print(f"\n[run_pipeline] Saved metrics to {results_csv}")
     print(results_df.round(4).to_string())
@@ -113,7 +120,7 @@ def run(dataset: str, skip_prep: bool = False):
         sample = X_test.sample(n=min(500, len(X_test)), random_state=42)
         explain_model(
             xgb_for_shap, sample,
-            os.path.join(out_dir, "shap_summary.png"),
+            os.path.join(out_dir, mode, "shap_summary.png"),
             f"SHAP Feature Importance ({cfg['display_name']})",
         )
 
@@ -124,5 +131,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--skip-prep", action="store_true", help="Reuse existing processed/feature-selected data")
+    parser.add_argument("--mode", choices=["reproduce", "novel"], default="reproduce",
+                        help="reproduce = paper's methods only; novel = our Stacked Hybrid vs the paper's hybrid")
     args = parser.parse_args()
-    run(args.dataset, skip_prep=args.skip_prep)
+    run(args.dataset, skip_prep=args.skip_prep, mode=args.mode)

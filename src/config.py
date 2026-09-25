@@ -11,9 +11,9 @@ import glob
 import os
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_RAW = os.path.join(PROJECT_ROOT, "data", "raw")
-DATA_PROCESSED = os.path.join(PROJECT_ROOT, "data", "processed")
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+DATA_RAW = os.environ.get("RIS_DATA_RAW", os.path.join(PROJECT_ROOT, "data", "raw"))
+DATA_PROCESSED = os.environ.get("RIS_DATA_PROCESSED", os.path.join(PROJECT_ROOT, "data", "processed"))
+RESULTS_DIR = os.environ.get("RIS_RESULTS", os.path.join(PROJECT_ROOT, "results"))
 
 NSL_KDD_COLUMNS = [
     "duration", "protocol_type", "service", "flag", "src_bytes", "dst_bytes",
@@ -84,7 +84,7 @@ DATASETS = {
         "label_column": "Label",
         "benign_values": {"benign"},
         "categorical_columns": [],
-        "drop_columns": ["Timestamp"],
+        "drop_columns": ["Timestamp", "Flow ID", "Src IP", "Dst IP", "Src Port"],
         "n_features_to_select": 30,
         "sample_fraction": None,
         # Paper's own methodology: 0.2% stratified sample per day-file before
