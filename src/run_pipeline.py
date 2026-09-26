@@ -30,11 +30,12 @@ from balance import balance_train_set
 from baselines import get_baseline_models
 from hybrid_baseline import AveragingHybrid
 from stacked_hybrid import StackedHybrid
+from ft_transformer import FTTransformerClassifier
 from evaluate import compute_metrics, save_confusion_matrix, save_roc_curve
 from explain_shap import explain_model
 
 
-def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce"):
+def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce", only=None):
     cfg = get_config(dataset)
     out_dir = os.path.join(RESULTS_DIR, dataset)
     os.makedirs(out_dir, exist_ok=True)
@@ -67,7 +68,7 @@ def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce"):
 
     results = []
     # reproduce: paper's baselines + averaging hybrid only.
-    # novel: paper's averaging hybrid (as the reference point) + our Stacked Hybrid.
+    # novel: paper's averaging hybrid (as the reference point) + our models.
     if mode == "reproduce":
         models = get_baseline_models()
         models["Averaging Hybrid (paper's method)"] = AveragingHybrid()
@@ -75,7 +76,14 @@ def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce"):
         models = {
             "Averaging Hybrid (paper's method)": AveragingHybrid(),
             "Stacked Hybrid (ours, novel)": StackedHybrid(),
+            "FT-Transformer (ours, novel)": FTTransformerClassifier(),
         }
+    if only:
+        wanted = [w.strip().lower() for w in only.split(",") if w.strip()]
+        models = {k: v for k, v in models.items() if any(w in k.lower() for w in wanted)}
+        if not models:
+            raise SystemExit(f"--models {only!r} matched no model")
+        print(f"[run_pipeline] Running only: {list(models)}")
 
     xgb_for_shap = None
 
@@ -111,7 +119,8 @@ def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce"):
             xgb_for_shap = model
 
     results_df = pd.DataFrame(results).set_index("Model")
-    results_csv = os.path.join(out_dir, f"metrics_{mode}.csv")
+    suffix = "" if not only else "_" + "_".join(w.strip().lower().replace(" ", "") for w in only.split(",") if w.strip())
+    results_csv = os.path.join(out_dir, f"metrics_{mode}{suffix}.csv")
     results_df.to_csv(results_csv)
     print(f"\n[run_pipeline] Saved metrics to {results_csv}")
     print(results_df.round(4).to_string())
@@ -132,6 +141,8 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--skip-prep", action="store_true", help="Reuse existing processed/feature-selected data")
     parser.add_argument("--mode", choices=["reproduce", "novel"], default="reproduce",
-                        help="reproduce = paper's methods only; novel = our Stacked Hybrid vs the paper's hybrid")
+                        help="reproduce = paper's methods only; novel = our models vs the paper's hybrid")
+    parser.add_argument("--models", default=None,
+                        help="comma-separated name fragments to run a subset, e.g. 'ft' or 'averaging,stacked'")
     args = parser.parse_args()
-    run(args.dataset, skip_prep=args.skip_prep, mode=args.mode)
+    run(args.dataset, skip_prep=args.skip_prep, mode=args.mode, only=args.models)

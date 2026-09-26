@@ -84,7 +84,8 @@ DATASETS = {
         "drop_columns": ["Flow ID", "Source IP", "Src IP", "Destination IP", "Dst IP", "Timestamp"],
         "n_features_to_select": 30,
         "sample_fraction": None,
-        "per_file_sample_fraction": None,  # files are small enough (~200MB each) to use in full
+        # The paper's Table 4 totals ~56.6k rows, i.e. ~2% of CIC-IDS2017; sample each file likewise.
+        "per_file_sample_fraction": 0.02,
     },
     "cse_cic_ids2018": {
         "display_name": "CSE-CIC-IDS2018",
@@ -95,6 +96,7 @@ DATASETS = {
         "label_column": "Label",
         "benign_values": {"benign"},
         "categorical_columns": [],
+        "onehot_columns": ["Protocol"],  # the paper's feature list has Protocol_6 / Protocol_0
         "drop_columns": ["Timestamp", "Flow ID", "Src IP", "Dst IP", "Src Port"],
         "n_features_to_select": 30,
         "sample_fraction": None,
@@ -103,6 +105,12 @@ DATASETS = {
         "per_file_sample_fraction": 0.002,
     },
 }
+
+# Ablation: UNSW-NB15 with duplicate rows kept, to measure how much deduplication
+# explains the gap to the paper's reported accuracy.
+DATASETS["unsw_nb15_nodedup"] = dict(
+    DATASETS["unsw_nb15"], display_name="UNSW-NB15 (duplicates kept)", drop_duplicates=False
+)
 
 
 def get_config(name: str) -> dict:

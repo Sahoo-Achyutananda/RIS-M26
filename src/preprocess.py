@@ -42,9 +42,7 @@ def load_raw(cfg: dict) -> pd.DataFrame:
         if per_file_sample and label_col in df.columns:
             # Paper's approach: stratified 0.2% sample per raw file *before* merging,
             # so huge multi-file datasets (e.g. CSE-CIC-IDS2018) stay memory-feasible.
-            df = df.groupby(label_col, group_keys=False).apply(
-                lambda g: g.sample(frac=per_file_sample, random_state=42) if len(g) > 0 else g
-            )
+            df = df.groupby(label_col, group_keys=False).sample(frac=per_file_sample, random_state=42)
             print(f"[preprocess] Stratified-sampled {os.path.basename(path)} to {df.shape}")
         frames.append(df)
     return pd.concat(frames, ignore_index=True)
@@ -76,9 +74,20 @@ def preprocess(dataset: str) -> str:
     for col in categorical_cols:
         df[col] = LabelEncoder().fit_transform(df[col].astype(str))
 
-    before = len(df)
-    df.drop_duplicates(inplace=True)
-    print(f"[preprocess] Dropped {before - len(df)} duplicate rows.")
+    # Low-cardinality categoricals the paper one-hot encodes (e.g. Protocol -> Protocol_0/6/17).
+    onehot_cols = [c for c in (_clean_col(c) for c in cfg.get("onehot_columns", [])) if c in df.columns]
+    if onehot_cols:
+        for col in onehot_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(-1).astype(int).astype(str)
+        df = pd.get_dummies(df, columns=onehot_cols, prefix=onehot_cols, dtype=int)
+        print(f"[preprocess] One-hot encoded {onehot_cols}")
+
+    if cfg.get("drop_duplicates", True):
+        before = len(df)
+        df.drop_duplicates(inplace=True)
+        print(f"[preprocess] Dropped {before - len(df)} duplicate rows.")
+    else:
+        print(f"[preprocess] Keeping duplicate rows ({int(df.duplicated().sum())} present).")
 
     numeric_cols = df.columns.drop("label")
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
@@ -89,9 +98,7 @@ def preprocess(dataset: str) -> str:
 
     sample_fraction = cfg.get("sample_fraction")
     if sample_fraction:
-        df = df.groupby("label", group_keys=False).apply(
-            lambda g: g.sample(frac=sample_fraction, random_state=42)
-        )
+        df = df.groupby("label", group_keys=False).sample(frac=sample_fraction, random_state=42)
         print(f"[preprocess] Stratified-sampled to {sample_fraction:.4%} -> shape {df.shape}")
 
     out_dir = os.path.join(DATA_PROCESSED, dataset)
