@@ -33,6 +33,8 @@ def load_raw(cfg: dict) -> pd.DataFrame:
         else:
             df = pd.read_csv(path, header=None, names=cfg["column_names"], low_memory=False, encoding=encoding)
 
+        df.columns = [str(c).strip() for c in df.columns]  # CIC-IDS2017 headers have leading spaces
+
         if label_col in df.columns:
             # Some CIC files repeat the header row inside the data; drop those rows.
             df = df[df[label_col].astype(str).str.strip().str.lower() != "label"]

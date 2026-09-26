@@ -15,6 +15,17 @@ DATA_RAW = os.environ.get("RIS_DATA_RAW", os.path.join(PROJECT_ROOT, "data", "ra
 DATA_PROCESSED = os.environ.get("RIS_DATA_PROCESSED", os.path.join(PROJECT_ROOT, "data", "processed"))
 RESULTS_DIR = os.environ.get("RIS_RESULTS", os.path.join(PROJECT_ROOT, "results"))
 
+def _collect(*dirs, pattern="*.csv"):
+    """CSV files from several candidate folders, de-duplicated by file name."""
+    seen, files = set(), []
+    for d in dirs:
+        for f in sorted(glob.glob(os.path.join(DATA_RAW, d, pattern))):
+            if os.path.basename(f) not in seen:
+                seen.add(os.path.basename(f))
+                files.append(f)
+    return files
+
+
 NSL_KDD_COLUMNS = [
     "duration", "protocol_type", "service", "flag", "src_bytes", "dst_bytes",
     "land", "wrong_fragment", "urgent", "hot", "num_failed_logins", "logged_in",
@@ -63,7 +74,7 @@ DATASETS = {
     },
     "cic_ids2017": {
         "display_name": "CIC-IDS2017",
-        "raw_files": sorted(glob.glob(os.path.join(DATA_RAW, "cic_ids2017", "*.csv"))),
+        "raw_files": _collect("cic_ids2017", "cic-ids-2017"),
         "has_header": True,
         "encoding": "latin1",
         "column_names": None,
@@ -77,7 +88,7 @@ DATASETS = {
     },
     "cse_cic_ids2018": {
         "display_name": "CSE-CIC-IDS2018",
-        "raw_files": sorted(glob.glob(os.path.join(DATA_RAW, "cse_cic_ids2018", "*.csv"))),
+        "raw_files": _collect("cse_cic_ids2018", "cds-ids-2018"),
         "has_header": True,
         "encoding": "latin1",
         "column_names": None,
