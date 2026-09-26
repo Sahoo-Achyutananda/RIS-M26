@@ -63,6 +63,8 @@ class FTTransformerClassifier:
 
     def fit(self, X, y):
         torch.manual_seed(self.random_state)
+        gpu = torch.cuda.get_device_name(0) if self.device.type == "cuda" else "none"
+        print(f"[ft_transformer] device: {self.device} (GPU: {gpu}, CPU threads: {torch.get_num_threads()})", flush=True)
         X, y = np.asarray(X, dtype=np.float64), np.asarray(y, dtype=np.float32)
         X_tr, X_val, y_tr, y_val = train_test_split(
             X, y, test_size=self.val_fraction, stratify=y, random_state=self.random_state

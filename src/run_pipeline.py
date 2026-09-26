@@ -12,13 +12,12 @@ import argparse
 import os
 import time
 
-# Torch/XGBoost/LightGBM each bundle their own OpenMP runtime; loading all three
-# on Windows causes duplicate-OpenMP-DLL heap corruption that manifests as bogus
-# "out of memory" errors in unrelated numpy/pandas allocations. Must be set
-# before those libraries are imported.
-os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
+# Windows-only workaround for the memory errors seen on the dev laptop. Limiting
+# threads everywhere would make torch/XGBoost single-threaded on Kaggle (Linux).
+if os.name == "nt":
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
