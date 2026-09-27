@@ -12,3 +12,4 @@ results/*.log
 Team2.zip
 Team2_ref/
 *.pdf
+!report/*.pdf
