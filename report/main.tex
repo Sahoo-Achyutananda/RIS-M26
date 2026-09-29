@@ -69,8 +69,8 @@ names as future work: a \emph{stacked} hybrid in which a trained meta-learner co
 and an FT-Transformer as a modern tabular deep model.
 
 On three of the four datasets our reproduction lands within 0.36 accuracy points of the paper, with a lower
-false-positive rate on all three. UNSW-NB15 is the exception (91.33\% vs.\ 97.11\%); keeping the 40\% duplicate
-rows that we remove closes about half of that gap. We also find that the hybrid's advantage over plain XGBoost
+false-positive rate on all three. UNSW-NB15 is the exception (91.33\% vs.\ 97.11\%); like the paper we remove its 40\% duplicate
+rows, and an ablation that keeps them shows they cannot explain the gap. We also find that the hybrid's advantage over plain XGBoost
 is negligible (on CIC-IDS2017 it is a single test flow out of 14{,}771), that the stacked hybrid makes
 \emph{exactly} the same predictions as simple averaging on CIC-IDS2017 because the meta-learner ignores the
 LSTM, and that the FT-Transformer trails the tree ensembles by 0.2--0.9 points while giving the lowest
@@ -104,8 +104,8 @@ including LSTMs, as future work.
         configurable codebase (Section~\ref{sec:method}).
   \item \textbf{Reverse-engineered, undocumented details}, most notably a 2\% stratified sample of CIC-IDS2017 that
         the paper never mentions but that its own class counts reveal exactly (Section~\ref{sec:sampling}).
-  \item \textbf{An explanation of the one large gap} (UNSW-NB15) through a duplicate-row ablation
-        (Section~\ref{sec:unsw}).
+  \item \textbf{A look at the one large gap} (UNSW-NB15), including a duplicate-row ablation that rules out
+        duplicate handling as the cause (Section~\ref{sec:unsw}).
   \item \textbf{Two extensions the paper proposes but does not evaluate}: a stacked ensemble of RF, XGBoost and an LSTM
         with a trained meta-learner, and an FT-Transformer (Section~\ref{sec:novel}).
   \item \textbf{A critical reading} of the paper's evaluation, listing verifiable internal inconsistencies and a
@@ -289,6 +289,32 @@ then fitted on the \textbf{training split only}. The paper balances \emph{before
 samples interpolated from test rows into training; we avoid that leak deliberately, so our test sets keep their
 natural class mix.
 
+Table~\ref{tab:smote} shows the effect on each training split. SMOTE synthesises new rows for whichever class is
+smaller, by interpolating between a row and one of its nearest same-class neighbours; Tomek-link removal then
+deletes pairs of opposite-class rows that are each other's nearest neighbour, which is why both classes can end
+below the original majority count. In most datasets the minority class is the attacks, but in the UNSW-NB15 run
+that keeps duplicates, attacks are the majority, so SMOTE synthesised \emph{normal} rows. The paper gives counts
+only for CSE-CIC-IDS2018 (25{,}971 per class after balancing, p.~10, Figure~7), for the whole dataset rather than a
+training split, and for the other three datasets states only that they were balanced.
+
+\begin{table}[H]
+\centering
+\caption{Class counts in each training split before and after SMOTE-Tomek (our final runs).}
+\label{tab:smote}
+\small
+\begin{tabular}{lrrrl}
+\toprule
+Dataset & Normal before & Attack before & Each class after & Rows SMOTE added to \\
+\midrule
+NSL-KDD                     & 53{,}877  & 49{,}644  & 53{,}739  & attack \\
+UNSW-NB15                   & 60{,}005  & 47{,}863  & 51{,}539  & attack \\
+UNSW-NB15, duplicates kept  & 65{,}100  & 115{,}271 & 108{,}646 & normal \\
+CSE-CIC-IDS2018             & 18{,}435  & 3{,}151   & 18{,}157  & attack \\
+CIC-IDS2017                 & 27{,}407  & 7{,}057   & 27{,}298  & attack \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \paragraph{Reproduction models.} Decision Tree, Logistic Regression and MLP (both with feature standardisation,
 which the paper's methodology figure includes), Random Forest (200 trees), XGBoost (200 trees), and the paper's
 \textbf{averaging hybrid}: the mean of RF and XGBoost predicted probabilities, thresholded at 0.5, which is what
@@ -352,8 +378,8 @@ with tree ensembles on top and the hybrid best or within 0.01 points of the best
 \subsection{The UNSW-NB15 gap and duplicate rows}
 \label{sec:unsw}
 UNSW-NB15 is the one dataset where we fall well short (91.33\% vs.\ 97.11\%). 40\% of its rows are exact duplicates;
-we remove them, and the paper does not say whether it did. Keeping duplicates lets identical rows sit in both
-training and test sets:
+we remove them, as the paper states it did (p.~10). As an ablation we also ran with duplicates kept, which lets
+identical rows sit in both training and test sets:
 
 \begin{table}[H]
 \centering
@@ -371,8 +397,9 @@ Paper                      & 97.11 & 97.44 & 5.29 \\
 \end{tabular}
 \end{table}
 
-Keeping duplicates recovers 2.7 of the 5.8-point gap. The remainder is plausibly explained by balancing before the
-split and by the paper's different, undescribed subset: its Table~6 lists about 81{,}000 records, while the official
+Keeping duplicates raises accuracy by 2.7 points, which shows how much copied rows inflate a score, but since the
+paper removed duplicates too, this cannot explain its higher number. The gap is more plausibly explained by
+balancing before the split and by the paper's different, undescribed subset: its Table~6 lists about 81{,}000 records, while the official
 partitions contain 257{,}673.
 
 \subsection{Extensions: stacked hybrid and FT-Transformer}
@@ -474,8 +501,8 @@ We hold our own work to the same standard:
 \section{Conclusion and Future Work}
 \label{sec:future}
 We reproduced Saini et al.'s hybrid RF+XGBoost APT detector on all four datasets. The reported performance largely
-reproduces on NSL-KDD, CSE-CIC-IDS2018 and CIC-IDS2017, while UNSW-NB15 falls short by 5.8 points, about half of which
-duplicate rows explain. The hybrid's advantage over a single XGBoost model is negligible, a trained stacking
+reproduces on NSL-KDD, CSE-CIC-IDS2018 and CIC-IDS2017, while UNSW-NB15 falls short by 5.8 points, a gap that duplicate
+rows do not explain. The hybrid's advantage over a single XGBoost model is negligible, a trained stacking
 meta-learner collapses to the same predictions, and an FT-Transformer does not beat the trees. The pattern suggests
 that the 97--99.9\% accuracies owe more to the datasets and the evaluation protocol than to the ensemble design.
 

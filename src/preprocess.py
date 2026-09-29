@@ -15,6 +15,10 @@ from sklearn.preprocessing import LabelEncoder
 
 from config import get_config, DATA_PROCESSED
 
+# Bookkeeping columns kept next to the features for Phase 2 (per-attack-type
+# analysis, NSL-KDD's official split). They are never used as model inputs.
+META_COLUMNS = ["attack_type", "source"]
+
 
 def _clean_col(col: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", str(col).strip())
@@ -44,6 +48,7 @@ def load_raw(cfg: dict) -> pd.DataFrame:
             # so huge multi-file datasets (e.g. CSE-CIC-IDS2018) stay memory-feasible.
             df = df.groupby(label_col, group_keys=False).sample(frac=per_file_sample, random_state=42)
             print(f"[preprocess] Stratified-sampled {os.path.basename(path)} to {df.shape}")
+        df["source"] = os.path.basename(path)
         frames.append(df)
     return pd.concat(frames, ignore_index=True)
 
@@ -57,9 +62,12 @@ def preprocess(dataset: str) -> str:
     label_col = cfg["label_column"]
     benign_values = {v.strip().lower() for v in cfg["benign_values"]}
 
+    # Read the attack name before the label column is turned into 0/1 (NSL-KDD's is called "label").
+    attack_type = df[cfg.get("type_column", label_col)].astype(str).str.strip()
     df["label"] = df[label_col].astype(str).str.strip().str.lower().apply(
         lambda v: 0 if v in benign_values else 1
     )
+    df["attack_type"] = attack_type.where(df["label"] == 1, "benign")
     if label_col != "label":
         df.drop(columns=[label_col], inplace=True)
 
@@ -82,14 +90,16 @@ def preprocess(dataset: str) -> str:
         df = pd.get_dummies(df, columns=onehot_cols, prefix=onehot_cols, dtype=int)
         print(f"[preprocess] One-hot encoded {onehot_cols}")
 
+    # Duplicates are judged on features + label only, as before the meta columns existed.
+    data_cols = [c for c in df.columns if c not in META_COLUMNS]
     if cfg.get("drop_duplicates", True):
         before = len(df)
-        df.drop_duplicates(inplace=True)
+        df.drop_duplicates(subset=data_cols, inplace=True)
         print(f"[preprocess] Dropped {before - len(df)} duplicate rows.")
     else:
-        print(f"[preprocess] Keeping duplicate rows ({int(df.duplicated().sum())} present).")
+        print(f"[preprocess] Keeping duplicate rows ({int(df.duplicated(subset=data_cols).sum())} present).")
 
-    numeric_cols = df.columns.drop("label")
+    numeric_cols = df.columns.drop(["label"] + META_COLUMNS)
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce")
     # Must come after to_numeric: CIC files contain the text "Infinity", which
     # to_numeric turns into a real inf.

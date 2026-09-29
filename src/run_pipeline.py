@@ -74,7 +74,8 @@ def run(dataset: str, skip_prep: bool = False, mode: str = "reproduce", only=Non
     else:
         models = {
             "Averaging Hybrid (paper's method)": AveragingHybrid(),
-            "Stacked Hybrid (ours, novel)": StackedHybrid(),
+            "Stacked Hybrid RF+XGB+LSTM (ours, novel)": StackedHybrid(deep="lstm"),
+            "Stacked Hybrid RF+XGB+FT-Transformer (ours, novel)": StackedHybrid(deep="ft"),
             "FT-Transformer (ours, novel)": FTTransformerClassifier(),
         }
     if only:
